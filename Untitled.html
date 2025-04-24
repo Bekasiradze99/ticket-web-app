@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ticket System</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .tab-buttons button { padding: 10px 20px; margin-right: 10px; cursor: pointer; }
+    .popup { display: none; position: fixed; background: white; border: 1px solid #ccc; padding: 20px; top: 30%; left: 50%; transform: translate(-50%, -30%); z-index: 1000; }
+    .popup input { margin-bottom: 10px; width: 100%; }
+    .overlay { display: none; position: fixed; background: rgba(0,0,0,0.5); top: 0; left: 0; width: 100%; height: 100%; z-index: 999; }
+    #result, #buy-result { margin-top: 15px; }
+  </style>
+</head>
+<body>
+
+  <div class="tab-buttons">
+    <button onclick="showTab('sell')">Sell a Ticket</button>
+    <button onclick="showTab('buy')">Buy a Ticket</button>
+  </div>
+
+  <div id="sell" class="tab active">
+    <h2>Sell a Ticket</h2>
+    <input type="text" id="ticketId" placeholder="Enter Ticket ID">
+    <button onclick="validateTicket()">Validate</button>
+    <div id="result"></div>
+  </div>
+
+  <div id="buy" class="tab">
+    <h2>Buy a Ticket</h2>
+    <div id="buy-list">Loading available seats...</div>
+    <div id="buy-result"></div>
+  </div>
+
+  <div class="overlay" id="overlay" onclick="closePopup()"></div>
+  <div class="popup" id="buyPopup">
+    <h3>Enter Your Details</h3>
+    <input type="text" id="buyerName" placeholder="Name"><br>
+    <input type="text" id="buyerSurname" placeholder="Surname"><br>
+    <button onclick="confirmBuy()">Confirm Purchase</button>
+  </div>
+
+  <script>
+    const backendURL = 'https://script.google.com/macros/s/AKfycbxyNoFWHJcG1hC5dfKrfwYpk5ZNq_3r8yGmWMUA2DuxMSrJ7oNY95IeJes4mQFQ6wHW/exec';
+    let selectedTicketId = '';
+
+    function showTab(tabId) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      if (tabId === 'buy') loadAvailableSeats();
+    }
+
+    function validateTicket() {
+      const ticketId = document.getElementById('ticketId').value;
+      fetch(backendURL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'validate', ticketId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        const resultDiv = document.getElementById('result');
+        if (data.status === 'valid') {
+          resultDiv.innerHTML = `✅ Valid Ticket<br>Name: ${data.name || '-'}<br>Surname: ${data.surname || '-'}<br>Seat: ${data.seat || '-'}<br><button onclick="sellTicket('${ticketId}')">Sell</button>`;
+        } else {
+          resultDiv.innerHTML = `❌ ${data.message}`;
+        }
+      })
+      .catch(() => document.getElementById('result').textContent = '⚠️ Error validating ticket');
+    }
+
+    function sellTicket(ticketId) {
+      fetch(backendURL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sell', ticketId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('result').innerText = data.status === 'sold' ? '✅ Ticket sold successfully.' : `❌ ${data.message}`;
+      })
+      .catch(() => document.getElementById('result').textContent = '⚠️ Error selling ticket');
+    }
+
+    function loadAvailableSeats() {
+      fetch(`${backendURL}?action=list`)
+      .then(res => res.json())
+      .then(data => {
+        const buyList = document.getElementById('buy-list');
+        buyList.innerHTML = data.status === 'ok' && data.seats.length > 0
+          ? data.seats.map(seat => `<div>Seat: ${seat.seat} <button onclick="openBuyPopup('${seat.id}')">Buy</button></div>`).join('')
+          : '❌ No available seats';
+      })
+      .catch(() => document.getElementById('buy-list').textContent = '⚠️ Error loading seats');
+    }
+
+    function openBuyPopup(ticketId) {
+      selectedTicketId = ticketId;
+      document.getElementById('overlay').style.display = 'block';
+      document.getElementById('buyPopup').style.display = 'block';
+    }
+
+    function closePopup() {
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('buyPopup').style.display = 'none';
+      document.getElementById('buyerName').value = '';
+      document.getElementById('buyerSurname').value = '';
+    }
+
+    function confirmBuy() {
+      const name = document.getElementById('buyerName').value;
+      const surname = document.getElementById('buyerSurname').value;
+
+      if (!name || !surname) {
+        alert("Please enter both name and surname.");
+        return;
+      }
+
+      fetch(backendURL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'buy', ticketId: selectedTicketId, name, surname })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          closePopup();
+          document.getElementById('buy-result').textContent = '✅ Ticket purchased successfully!';
+          loadAvailableSeats();
+        } else {
+          document.getElementById('buy-result').textContent = '❌ ' + data.message;
+        }
+      })
+      .catch(error => {
+        console.error("Purchase Error:", error);
+        document.getElementById('buy-result').textContent = '⚠️ Error completing purchase.';
+      });
+    }
+  </script>
+</body>
+</html>
